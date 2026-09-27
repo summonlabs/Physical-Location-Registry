@@ -5,6 +5,8 @@
 
 #include <cstdint>
 
+#include "dccp/physical_location_registry/strong_id.hpp"
+
 namespace dccp::physical_location_registry {
 namespace {
 
@@ -217,6 +219,30 @@ bool ascii_case_insensitive_equal(std::string_view lhs, std::string_view rhs) no
 int byte_compare(std::string_view lhs, std::string_view rhs) noexcept {
   const int cmp = lhs.compare(rhs);
   return cmp < 0 ? -1 : (cmp > 0 ? 1 : 0);
+}
+
+bool is_valid_identifier_syntax(std::string_view raw) noexcept {
+  if (raw.empty() || raw.size() > kMaxIdentifierBytes) {
+    return false;
+  }
+  const auto first = static_cast<std::uint8_t>(raw.front());
+  const auto last = static_cast<std::uint8_t>(raw.back());
+  if (!is_ascii_alphanumeric(first) || !is_ascii_alphanumeric(last)) {
+    return false;
+  }
+  for (const char raw_byte : raw) {
+    const auto byte = static_cast<std::uint8_t>(raw_byte);
+    if (is_ascii_alphanumeric(byte) || byte == '.' || byte == ':' || byte == '-') {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+std::string_view identifier_syntax_help() noexcept {
+  return "an identifier is 1..128 bytes, begins and ends with an ASCII letter or digit, and contains "
+         "only ASCII letters, digits, '.', ':' and '-'";
 }
 
 }  // namespace dccp::physical_location_registry

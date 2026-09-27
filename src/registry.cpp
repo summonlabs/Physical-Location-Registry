@@ -164,6 +164,14 @@ Result<std::vector<ChildEntry>> Registry::descendants(const LocationId& id,
   return model_->descendants(id, max_depth);
 }
 
+Result<std::vector<ChildEntry>> Registry::roots() const {
+  std::shared_lock lock(mutex_);
+  if (closed_) {
+    return Error(ErrorCode::SessionClosed, "this registry session is closed");
+  }
+  return model_->roots();
+}
+
 Result<std::vector<LocationView>> Registry::list(const ListOptions& options) const {
   std::shared_lock lock(mutex_);
   if (closed_) {

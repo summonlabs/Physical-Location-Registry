@@ -102,6 +102,9 @@ class PLR_API Registry {
   Result<LocationPath> path_of(const LocationId& id) const;
   Result<std::vector<ChildEntry>> children(const LocationId& id) const;
   Result<std::vector<ChildEntry>> descendants(const LocationId& id, std::uint32_t max_depth) const;
+
+  /// Parentless locations in canonical address order.
+  Result<std::vector<ChildEntry>> roots() const;
   Result<std::vector<LocationView>> list(const ListOptions& options = {}) const;
   Result<std::vector<AliasBinding>> aliases() const;
   LocationStatistics statistics() const;

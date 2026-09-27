@@ -8,6 +8,37 @@
 
 namespace dccp::physical_location_registry {
 
+LocationView::LocationView(LocationId id,
+                           LocationKind kind,
+                           std::optional<LocationId> parent,
+                           AddressComponent component,
+                           LocationPath path,
+                           std::string label,
+                           LifecycleState lifecycle,
+                           std::optional<RackUnitCoordinate> unit,
+                           std::optional<RackEnvelope> envelope,
+                           LocationGeneration generation,
+                           std::optional<LocationId> replaces,
+                           std::optional<LocationId> replaced_by,
+                           ProvenanceRecord provenance,
+                           std::vector<MoveRecord> moves,
+                           std::vector<std::string> aliases)
+    : id_(std::move(id)),
+      kind_(kind),
+      parent_(std::move(parent)),
+      component_(std::move(component)),
+      path_(std::move(path)),
+      label_(std::move(label)),
+      lifecycle_(lifecycle),
+      unit_(unit),
+      envelope_(envelope),
+      generation_(generation),
+      replaces_(std::move(replaces)),
+      replaced_by_(std::move(replaced_by)),
+      provenance_(std::move(provenance)),
+      moves_(std::move(moves)),
+      aliases_(std::move(aliases)) {}
+
 std::string LocationView::summary() const {
   std::string text;
   text.append(path_.to_string());

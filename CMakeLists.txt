@@ -134,6 +134,7 @@ set(PLR_SOURCES
   src/provenance.cpp
   src/limits.cpp
   src/location.cpp
+  src/requests.cpp
   src/digest.cpp
   src/snapshot_codec.cpp
   src/snapshot.cpp

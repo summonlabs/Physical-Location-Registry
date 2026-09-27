@@ -199,7 +199,8 @@ Result<void> check_rack_geometry(const Snapshot::Impl& model,
                                  LocationKind kind,
                                  const std::optional<RackUnitCoordinate>& unit,
                                  const std::optional<RackEnvelope>& envelope,
-                                 const LocationId& owner) {
+                                 const LocationId& owner,
+                                 const std::optional<LocationId>& also_ignored = std::nullopt) {
   if (unit.has_value() && !kind_may_carry_unit_coordinate(kind)) {
     return Error(ErrorCode::RackUnitNotAllowed,
                  std::string("a ") + std::string(location_kind_name(kind)) +
@@ -231,7 +232,8 @@ Result<void> check_rack_geometry(const Snapshot::Impl& model,
   const ChildSet* set = model.child_set(parent);
   if (set != nullptr) {
     for (const auto& entry : set->by_component) {
-      if (entry.second == owner) {
+      if (entry.second == owner ||
+          (also_ignored.has_value() && entry.second == also_ignored.value())) {
         continue;
       }
       const LocationRecord* sibling = model.find(entry.second);
@@ -975,8 +977,10 @@ Result<MutationReceipt> Registry::move_location(const MoveLocationRequest& reque
     return Error(ErrorCode::NoOpMutation, "the location is already under this parent")
         .with_subject(request.id.str());
   }
-  PLR_CHECK(check_parent_usable(model, request.new_parent, record->kind));
 
+  // The cycle check comes before the containment-schema check: moving a node
+  // into its own subtree is a structural cycle, and that is the more useful
+  // diagnosis even when the kinds would also have been illegal.
   PLR_TRY(ancestors, model.subtree_ids(request.id, model.limits.max_depth));
   for (const LocationId& member : ancestors) {
     if (member == request.new_parent) {
@@ -985,6 +989,12 @@ Result<MutationReceipt> Registry::move_location(const MoveLocationRequest& reque
           .with_subject(request.new_parent.str());
     }
   }
+
+  if (model.find(request.new_parent) == nullptr) {
+    return Error(ErrorCode::NotFound, "the requested parent does not exist")
+        .with_subject(request.new_parent.str());
+  }
+  PLR_CHECK(check_parent_usable(model, request.new_parent, record->kind));
 
   const std::optional<LocationId> new_parent = request.new_parent;
   PLR_CHECK(check_component_available(model, new_parent, record->component, request.id));
@@ -1405,7 +1415,8 @@ Result<MutationReceipt> Registry::replace_location(const ReplaceLocationRequest&
   const std::optional<RackEnvelope> successor_envelope =
       request.successor_envelope.has_value() ? request.successor_envelope : predecessor->envelope;
   PLR_CHECK(check_rack_geometry(model, predecessor->parent, predecessor->kind, successor_unit,
-                                       successor_envelope, request.successor_id));
+                                successor_envelope, request.successor_id,
+                                request.predecessor));
   PLR_CHECK(check_alias_claims(model, model.path_of(*predecessor).value(),
                                          request.successor_id));
   PLR_CHECK(check_cancelled(request.context.stop));
@@ -1749,6 +1760,25 @@ Result<MutationReceipt> Registry::set_rack_geometry(const SetRackGeometryRequest
     return Error(ErrorCode::NoOpMutation, "the requested rack geometry is already in place")
         .with_subject(request.id.str());
   }
+  // Narrowing a rack envelope must not strand a unit that is already addressed
+  // inside it: stored state has to stay consistent with the geometry it
+  // declares.
+  if (record->kind == LocationKind::Rack && request.envelope.has_value()) {
+    const ChildSet* child_set = model.child_set(request.id);
+    if (child_set != nullptr) {
+      for (const auto& entry : child_set->by_component) {
+        const LocationRecord* child = model.find(entry.second);
+        if (child != nullptr && child->unit.has_value() &&
+            !request.envelope->contains(child->unit.value())) {
+          return Error(ErrorCode::RackUnitOutOfEnvelope,
+                       "unit " + child->unit->to_string() +
+                           " of a child location would fall outside the requested rack envelope " +
+                           request.envelope->to_string())
+              .with_subject(child->id.str());
+        }
+      }
+    }
+  }
   PLR_CHECK(check_cancelled(request.context.stop));
 
   PLR_TRY(next_revision, model.revision.next());
@@ -1892,10 +1922,6 @@ Explanation Registry::explain_move(const MoveLocationRequest& request) const {
                       "only an active location can be moved")
                     .with_subject(request.id.str()));
   }
-  auto parent_ok = check_parent_usable(model, request.new_parent, record->kind);
-  if (!parent_ok.has_value()) {
-    return fail(parent_ok.error());
-  }
   auto subtree = model.subtree_ids(request.id, model.limits.max_depth);
   if (!subtree.has_value()) {
     return fail(subtree.error());
@@ -1906,6 +1932,14 @@ Explanation Registry::explain_move(const MoveLocationRequest& request) const {
                         "the new parent is inside the subtree being moved")
                       .with_subject(request.new_parent.str()));
     }
+  }
+  if (model.find(request.new_parent) == nullptr) {
+    return fail(Error(ErrorCode::NotFound, "the requested parent does not exist")
+                    .with_subject(request.new_parent.str()));
+  }
+  auto parent_ok = check_parent_usable(model, request.new_parent, record->kind);
+  if (!parent_ok.has_value()) {
+    return fail(parent_ok.error());
   }
   auto component_free = check_component_available(model, request.new_parent, record->component,
                                                  request.id);

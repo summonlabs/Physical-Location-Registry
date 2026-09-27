@@ -508,6 +508,14 @@ Result<void> Snapshot::Impl::validate_shape() const {
               .with_subject(id.str());
         }
       }
+      // A unit coordinate must lie inside the envelope its rack declares.
+      if (record.unit.has_value() && parent->envelope.has_value() &&
+          !parent->envelope->contains(record.unit.value())) {
+        return Error(ErrorCode::RackUnitOutOfEnvelope,
+                     "stored unit coordinate lies outside the rack envelope " +
+                         parent->envelope->to_string())
+            .with_subject(id.str());
+      }
     } else if (!kind_may_be_root(record.kind)) {
       return Error(ErrorCode::KindMustHaveParent,
                    std::string("a ") + std::string(location_kind_name(record.kind)) +

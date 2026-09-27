@@ -147,6 +147,9 @@ Result<HeadRecord> parse_head(std::string_view text) {
   std::string_view rest = line.substr(kHeadMagic.size());
 
   const auto take_field = [&rest](std::string_view key) -> Result<std::string_view> {
+    while (!rest.empty() && rest.front() == ' ') {
+      rest.remove_prefix(1);
+    }
     if (rest.size() < key.size() + 1 || rest.substr(0, key.size()) != key || rest[key.size()] != '=') {
       return Error(ErrorCode::HeadCorrupt, "head field " + std::string(key) + " is missing or out of order");
     }

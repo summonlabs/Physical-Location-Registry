@@ -386,6 +386,20 @@ Result<Snapshot> decode_model_bytes(std::string_view bytes) {
       return Error(ErrorCode::MalformedRecord, "location has an unknown kind")
           .with_subject(std::to_string(kind_value));
     }
+
+    // Field order here mirrors encode_model() exactly; the format is canonical,
+    // so a decoder that disagreed with the encoder would misread every record.
+    PLR_TRY(has_parent, reader.u8());
+    PLR_TRY(parent_text, reader.text(kMaxIdentifierTextBytes, "location.parent"));
+    std::optional<LocationId> parent;
+    if (has_parent != 0) {
+      PLR_TRY(parent_id, LocationId::parse(parent_text));
+      parent = parent_id;
+    } else if (!parent_text.empty()) {
+      return Error(ErrorCode::MalformedRecord, "location carries an unexpected parent value")
+          .with_subject(id.str());
+    }
+
     PLR_TRY(component_text, reader.text(kMaxComponentTextBytes, "location.component"));
     PLR_TRY(component, AddressComponent::parse(component_text));
 
@@ -396,16 +410,7 @@ Result<Snapshot> decode_model_bytes(std::string_view bytes) {
     auto inserted = model->records.emplace(id, LocationRecord(id, component));
     LocationRecord& record = inserted.first->second;
     record.kind = static_cast<LocationKind>(kind_value);
-
-    PLR_TRY(has_parent, reader.u8());
-    PLR_TRY(parent_text, reader.text(kMaxIdentifierTextBytes, "location.parent"));
-    if (has_parent != 0) {
-      PLR_TRY(parent_id, LocationId::parse(parent_text));
-      record.parent = parent_id;
-    } else if (!parent_text.empty()) {
-      return Error(ErrorCode::MalformedRecord, "location carries an unexpected parent value")
-          .with_subject(id.str());
-    }
+    record.parent = parent;
 
     PLR_TRY(label, reader.text(limits.max_label_bytes, "location.label"));
     record.label = std::move(label);
