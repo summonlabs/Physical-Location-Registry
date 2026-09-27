@@ -99,6 +99,10 @@ struct PLR_API ReaddressRequest {
 };
 
 /// Change a location's human-readable label. Address and identity are unchanged.
+///
+/// A label is descriptive metadata rather than part of the address space, so it
+/// may change on an Active or a Retired location. A Replaced location is
+/// terminal and accepts no change at all.
 struct PLR_API RelabelRequest {
   LocationId id;
   std::string label;

@@ -96,11 +96,12 @@ class PLR_API Snapshot {
 
   LocationStatistics statistics() const;
 
-  /// Replacement lineage records, ordered by predecessor id.
-  const std::vector<ReplacementRecord>& replacements() const;
+  /// Replacement lineage records, ordered by predecessor id. Returned by value:
+  /// a reference into a temporary snapshot would outlive nothing.
+  std::vector<ReplacementRecord> replacements() const;
 
-  /// Idempotency receipts, oldest first.
-  const std::vector<OperationReceipt>& operation_receipts() const;
+  /// Idempotency receipts, oldest first. Returned by value for the same reason.
+  std::vector<OperationReceipt> operation_receipts() const;
 
   /// SHA-256 over the canonical encoding of this snapshot, lowercase hex.
   Result<std::string> canonical_digest() const;

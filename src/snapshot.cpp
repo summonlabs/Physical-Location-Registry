@@ -929,9 +929,9 @@ LocationStatistics Snapshot::statistics() const {
   return statistics;
 }
 
-const std::vector<ReplacementRecord>& Snapshot::replacements() const { return impl_->replacements; }
+std::vector<ReplacementRecord> Snapshot::replacements() const { return impl_->replacements; }
 
-const std::vector<OperationReceipt>& Snapshot::operation_receipts() const { return impl_->receipts; }
+std::vector<OperationReceipt> Snapshot::operation_receipts() const { return impl_->receipts; }
 
 Result<std::string> Snapshot::canonical_digest() const {
   PLR_TRY(bytes, encode_snapshot(*this));
