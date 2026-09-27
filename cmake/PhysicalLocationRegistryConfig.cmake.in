@@ -1,0 +1,24 @@
+@PACKAGE_INIT@
+
+# Physical Location Registry package configuration.
+#
+# Consume it with:
+#
+#   find_package(PhysicalLocationRegistry CONFIG REQUIRED)
+#   target_link_libraries(app PRIVATE SummonSoftwareLabs::PhysicalLocationRegistry)
+#
+# Physical Location Registry has no third-party dependencies. The operating
+# system libraries the library links for durable publication and writer fencing
+# are recorded on the imported target itself.
+
+include(CMakeFindDependencyMacro)
+
+set(PhysicalLocationRegistry_VERSION "@PROJECT_VERSION@")
+
+include("${CMAKE_CURRENT_LIST_DIR}/PhysicalLocationRegistryTargets.cmake")
+
+# Convenience for consumers that add the headers to their own include path
+# instead of linking the imported target.
+set_and_check(PhysicalLocationRegistry_INCLUDE_DIRS "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+
+check_required_components(PhysicalLocationRegistry)

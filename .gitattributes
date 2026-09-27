@@ -1,0 +1,10 @@
+# Normalize line endings: sources are stored with LF in the repository.
+* text=auto eol=lf
+
+# Files that are genuinely binary must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.zip binary
+*.gz binary
+*.plr binary
+*.plrsnap binary
