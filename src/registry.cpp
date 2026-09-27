@@ -190,9 +190,10 @@ Result<std::vector<AliasBinding>> Registry::aliases() const {
 
 LocationStatistics Registry::statistics() const {
   std::shared_lock lock(mutex_);
-  if (closed_) {
-    return LocationStatistics{};
-  }
+  // Deliberately not gated on closed_: closing stops new mutations, it does not
+  // invalidate state that was already committed, so the committed statistics
+  // remain reportable. Queries that could be mistaken for fresh authority
+  // (find, resolve, list) do report SessionClosed.
   return model_->statistics();
 }
 

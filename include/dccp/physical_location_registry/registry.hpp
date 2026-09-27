@@ -107,6 +107,10 @@ class PLR_API Registry {
   Result<std::vector<ChildEntry>> roots() const;
   Result<std::vector<LocationView>> list(const ListOptions& options = {}) const;
   Result<std::vector<AliasBinding>> aliases() const;
+
+  /// Aggregate counts of the committed state this session last observed. A
+  /// closed session still reports them: closing stops new mutations, it does not
+  /// invalidate what was already committed.
   LocationStatistics statistics() const;
 
   /// Generation diff between two revisions that are still inside the in-memory

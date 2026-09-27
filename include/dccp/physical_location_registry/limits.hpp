@@ -56,7 +56,12 @@ struct PLR_API Limits {
   std::uint32_t max_operation_receipts = 1024U;
   std::uint32_t max_retained_revisions = 4U;
   std::uint32_t max_publications_retained = 3U;
+
+  /// Bound on how many locations one traversal may visit. Setting it below
+  /// max_locations is legal, but a full listing then cannot be expressed: the
+  /// listing is rejected with LimitExceeded instead of being truncated.
   std::uint32_t max_traversal_nodes = 1'000'000U;
+
   std::uint64_t max_state_bytes = 64ULL * 1024ULL * 1024ULL;
 
   /// Validates every field and every relation between fields.

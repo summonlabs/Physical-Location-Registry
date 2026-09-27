@@ -82,12 +82,6 @@ Result<void> Limits::validate() const {
                  "max_children_per_location must not exceed max_locations")
         .with_subject(std::to_string(max_children_per_location));
   }
-  if (max_traversal_nodes < max_locations) {
-    return Error(ErrorCode::LimitExceeded,
-                 "max_traversal_nodes must be at least max_locations so that a full listing is "
-                 "always expressible")
-        .with_subject(std::to_string(max_traversal_nodes));
-  }
   return ok();
 }
 
