@@ -217,9 +217,16 @@ A store is one directory:
 
 ```
 store.lock          writer lock file (advisory operating-system lock)
+store.id            durable store identity anchor, written once at creation
 head                current publication pointer, replaced atomically
 state.<sequence>.plr immutable canonical state publications
 ```
+
+The identity anchor is not authoritative state; the state carries the identity it
+was written with. It exists so that recovery never has to guess which store a
+publication belongs to: a renamed, stray or foreign publication cannot be
+adopted, and a directory whose files were swapped with another store's files is
+refused instead of being silently accepted under a new identity.
 
 Publication is a protocol, not an append:
 
@@ -397,7 +404,8 @@ mutation options: --actor A [--at TIME] [--expected-generation N]
 
 The tool has no privileged path into the store: mutations go through the same
 public API, including authority, generation, revision and lifecycle checks that a
-library consumer faces. Exit codes are stable:
+library consumer faces. Options are validated per command, so a misspelled option
+is a usage error rather than something silently ignored. Exit codes are stable:
 
 | Code | Meaning |
 | --- | --- |
@@ -480,9 +488,6 @@ local filesystem. Every row below was run in this environment.
 | Install + downstream consumer | `cmake --install` to a prefix, then `tests/package_consumer` configured, built and run from outside the source tree; it printed `consumer ok` |
 | Examples | all seven example programs compiled and ran to completion with exit code 0 |
 | Fresh clone | build, test, install and downstream consumer run from a clean clone of the committed sources |
-
-The suite contains no timeout, watchdog or forced-termination logic: a test either
-completes and reports, or it is a defect to diagnose.
 
 ## Benchmarks
 
