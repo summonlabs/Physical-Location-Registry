@@ -131,10 +131,14 @@ std::string render(const T& value) {
 }  // namespace detail
 }  // namespace plr_test
 
+// Comparisons copy their operands. Binding a reference to the result of
+// value()-style accessors would dangle as soon as the temporary that owns the
+// value dies, which is exactly the kind of defect a sanitizer catches and a
+// plain test run does not.
 #define PLR_EXPECT_EQ(actual, expected)                                                     \
   do {                                                                                      \
-    const auto& plr_actual = (actual);                                                      \
-    const auto& plr_expected = (expected);                                                  \
+    const auto plr_actual = (actual);                                                       \
+    const auto plr_expected = (expected);                                                   \
     if (!(plr_actual == plr_expected)) {                                                    \
       ::plr_test::report_failure(__FILE__, __LINE__,                                        \
                                  std::string(#actual " == " #expected " (got ") +           \
@@ -145,8 +149,8 @@ std::string render(const T& value) {
 
 #define PLR_EXPECT_NE(actual, unexpected)                                          \
   do {                                                                             \
-    const auto& plr_actual = (actual);                                             \
-    const auto& plr_unexpected = (unexpected);                                     \
+    const auto plr_actual = (actual);                                              \
+    const auto plr_unexpected = (unexpected);                                      \
     if (plr_actual == plr_unexpected) {                                            \
       ::plr_test::report_failure(__FILE__, __LINE__,                               \
                                  std::string(#actual " != " #unexpected " (both ") + \

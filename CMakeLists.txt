@@ -238,14 +238,16 @@ if(BUILD_TESTING AND PLR_BUILD_TESTS)
       target_link_libraries(${test_target} PRIVATE physical_location_registry_test_support)
     endif()
 
-    # The multi-process suite drives the real tools, so they must exist first.
+    # The multi-process and adversarial suites drive the real tools, so those
+    # must exist first and are handed their paths.
     if(TARGET plr-store-agent AND TARGET plr-cli)
       add_dependencies(${test_target} plr-store-agent plr-cli)
     endif()
 
-    if(test_stem STREQUAL "test_multiprocess" AND TARGET plr-store-agent AND TARGET plr-cli)
+    if((test_stem STREQUAL "test_multiprocess" OR test_stem STREQUAL "test_adversarial")
+       AND TARGET plr-store-agent AND TARGET plr-cli)
       add_test(NAME ${test_target}
-               COMMAND ${test_target} multiprocess
+               COMMAND ${test_target} ${test_suffix}
                        --agent $<TARGET_FILE:plr-store-agent>
                        --cli $<TARGET_FILE:plr-cli>)
     else()

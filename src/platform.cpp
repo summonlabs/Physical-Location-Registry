@@ -107,7 +107,9 @@ Result<void> ensure_directory(const std::filesystem::path& directory) {
     if (std::filesystem::is_directory(directory, error)) {
       return ok();
     }
-    return Error(ErrorCode::StoreExists, "path exists and is not a directory")
+    // A file, device or link is in the way. That is an I/O problem, not an
+    // already-existing store, so it carries its own code and message.
+    return Error(ErrorCode::IoError, "path exists and is not a directory")
         .with_subject(directory.string());
   }
   std::filesystem::create_directories(directory, error);
@@ -398,6 +400,20 @@ Result<std::shared_ptr<LockHandle>> acquire_exclusive_lock(const std::filesystem
           .with_subject(lock_path.string());
     }
     return io_error("flock", lock_path, last_error_text());
+  }
+  // The lock belongs to the open file description, so a lock file that someone
+  // unlinked and recreated would leave two writers each believing they own the
+  // store. Compare the file behind the descriptor with the file the path now
+  // names, and refuse when they differ.
+  struct stat descriptor_stat {};
+  struct stat path_stat {};
+  if (::fstat(descriptor, &descriptor_stat) == 0 && ::stat(lock_path.c_str(), &path_stat) == 0 &&
+      (descriptor_stat.st_dev != path_stat.st_dev || descriptor_stat.st_ino != path_stat.st_ino)) {
+    ::flock(descriptor, LOCK_UN);
+    ::close(descriptor);
+    return Error(ErrorCode::StoreLocked,
+                 "the store lock file was replaced while it was being acquired")
+        .with_subject(lock_path.string());
   }
   handle->descriptor = descriptor;
   handle->held = true;

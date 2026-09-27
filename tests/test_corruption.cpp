@@ -305,7 +305,8 @@ PLR_TEST(corruption, hostile_component_and_label_text_never_reaches_state) {
     names.push_back(entry.path().filename().string());
   }
   for (const std::string& name : names) {
-    PLR_EXPECT(name == "head" || name == "store.lock" || name.rfind("state.", 0) == 0);
+    PLR_EXPECT(name == "head" || name == "store.lock" || name == "store.id" ||
+               name.rfind("state.", 0) == 0);
   }
 }
 

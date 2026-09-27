@@ -23,6 +23,9 @@ namespace {
 constexpr std::string_view kHeadFile = "head";
 constexpr std::string_view kHeadTempFile = "head.new";
 constexpr std::string_view kLockFile = "store.lock";
+constexpr std::string_view kStoreIdFile = "store.id";
+constexpr std::string_view kStoreIdMagic = "PLRID1";
+constexpr std::size_t kMaxStoreIdBytes = 256;
 constexpr std::string_view kStatePrefix = "state.";
 constexpr std::string_view kStateSuffix = ".plr";
 constexpr std::string_view kStateTempSuffix = ".plr.new";
@@ -87,6 +90,58 @@ bool is_temp_file_name(std::string_view name) {
   }
   return name.size() > kStateTempSuffix.size() &&
          name.substr(name.size() - kStateTempSuffix.size()) == kStateTempSuffix;
+}
+
+/// The durable store identity anchor.
+///
+/// It exists so that recovery never has to guess which store a publication
+/// belongs to: a stray or foreign publication in the same directory cannot be
+/// adopted, and a directory swapped with another store's files is refused
+/// instead of being mixed into an identity. The anchor is not authoritative
+/// state; the state itself still carries the identity it was written with.
+std::string format_store_id(const StoreId& id) {
+  std::string text(kStoreIdMagic);
+  text.push_back(' ');
+  text.append(id.value());
+  text.push_back('\n');
+  return text;
+}
+
+Result<StoreId> parse_store_id_file(std::string_view text) {
+  if (text.size() > kMaxStoreIdBytes) {
+    return Error(ErrorCode::StoreCorrupt, "store identity anchor is longer than the permitted maximum");
+  }
+  if (text.empty() || text.back() != '\n') {
+    return Error(ErrorCode::StoreCorrupt, "store identity anchor must be one newline-terminated line");
+  }
+  const std::string_view line = text.substr(0, text.size() - 1);
+  if (line.find('\n') != std::string_view::npos || line.find('\r') != std::string_view::npos) {
+    return Error(ErrorCode::StoreCorrupt, "store identity anchor must be a single line");
+  }
+  if (line.substr(0, kStoreIdMagic.size()) != kStoreIdMagic || line.size() <= kStoreIdMagic.size() ||
+      line[kStoreIdMagic.size()] != ' ') {
+    return Error(ErrorCode::StoreCorrupt, "store identity anchor has an unexpected shape");
+  }
+  return StoreId::parse(line.substr(kStoreIdMagic.size() + 1));
+}
+
+/// Reads the anchor when it exists. A missing anchor is not an error: it is
+/// written by the first writer session that opens a store without one.
+Result<std::optional<StoreId>> read_store_id_file(const std::filesystem::path& directory) {
+  const auto path = directory / std::string(kStoreIdFile);
+  PLR_TRY(exists, internal::regular_file_exists(path));
+  if (!exists) {
+    return std::optional<StoreId>();
+  }
+  auto text = internal::read_file_bounded(path, kMaxStoreIdBytes);
+  if (!text.has_value()) {
+    // An oversized anchor is corruption of store metadata, not a caller limit.
+    return Error(ErrorCode::StoreCorrupt,
+                 "store identity anchor could not be read: " + text.error().message())
+        .with_subject(path.string());
+  }
+  PLR_TRY(id, parse_store_id_file(text.value()));
+  return std::optional<StoreId>(id);
 }
 
 std::string format_head(const HeadRecord& head) {
@@ -332,7 +387,8 @@ struct LoadOutcome {
 /// Reads and validates the publication referenced by head, or recovers the
 /// newest valid publication when head is unusable.
 Result<LoadOutcome> load_published_state(const std::filesystem::path& directory,
-                                         std::uint64_t max_state_bytes) {
+                                         std::uint64_t max_state_bytes,
+                                         const std::optional<StoreId>& expected_store) {
   LoadOutcome outcome;
 
   const auto head_path = directory / std::string(kHeadFile);
@@ -424,6 +480,24 @@ Result<LoadOutcome> load_published_state(const std::filesystem::path& directory,
       continue;
     }
     const Snapshot::Impl& model = SnapshotAccess::get(decoded.value());
+
+    // A publication is only eligible if it agrees with its own file name and,
+    // when the store identity is anchored, with that anchor. A stray, renamed or
+    // foreign file therefore cannot be adopted as this store's state.
+    if (model.sequence.value() != sequence) {
+      ++outcome.report.invalid_publications_skipped;
+      outcome.report.notes.emplace_back(
+          "skipped publication " + std::to_string(sequence) +
+          " because its own sequence is " + std::to_string(model.sequence.value()));
+      continue;
+    }
+    if (expected_store.has_value() && model.store_id != expected_store.value()) {
+      ++outcome.report.invalid_publications_skipped;
+      outcome.report.notes.emplace_back("skipped publication " + std::to_string(sequence) +
+                                        " because it belongs to a different store");
+      continue;
+    }
+
     outcome.model = std::make_unique<Snapshot::Impl>(model);
     outcome.report.recovered_older_publication = true;
     outcome.report.recovered_sequence = model.sequence;
@@ -499,6 +573,13 @@ Result<std::shared_ptr<Store>> Store::create(const std::filesystem::path& direct
   model->limits = limits;
   Snapshot initial = SnapshotAccess::make(std::move(model));
 
+  // Anchor the store identity before the first publication, so recovery can
+  // always tell this store's publications from anything else in the directory.
+  PLR_CHECK(internal::write_file(directory / std::string(kStoreIdFile),
+                                 format_store_id(store->store_id_),
+                                 options.fsync_state_before_publish));
+  PLR_CHECK(internal::sync_directory(directory, options.fsync_directory_after_rename));
+
   PLR_CHECK(store->publish(initial));
   store->recovery_.notes.emplace_back("store created at publication " +
                                       std::to_string(store->sequence_.value()));
@@ -554,7 +635,9 @@ Result<std::shared_ptr<Store>> Store::open(const std::filesystem::path& director
 
   const std::uint64_t read_bound =
       static_cast<std::uint64_t>(kHardMaxStateBytes) + 4096ULL;
-  auto loaded = load_published_state(directory, read_bound);
+  PLR_TRY(anchor_result, read_store_id_file(directory));
+  const std::optional<StoreId> anchor = anchor_result;
+  auto loaded = load_published_state(directory, read_bound, anchor);
   if (!loaded.has_value()) {
     return loaded.error();
   }
@@ -564,6 +647,15 @@ Result<std::shared_ptr<Store>> Store::open(const std::filesystem::path& director
   store->sequence_ = loaded.value().model->sequence;
   store->epoch_ = loaded.value().model->epoch;
   store->limits_ = loaded.value().model->limits;
+
+  // The anchored identity and the loaded state must agree: a store directory
+  // whose files have been swapped with another store's files is refused rather
+  // than silently accepted under a new identity.
+  if (anchor.has_value() && anchor.value() != store->store_id_) {
+    return Error(ErrorCode::StoreMismatch,
+                 "the store identity anchor does not match the identity in the published state")
+        .with_subject(directory.string());
+  }
 
   if (options.requested_limits.has_value() && options.requested_limits.value() != store->limits_) {
     return Error(ErrorCode::LimitsMismatch,
@@ -582,6 +674,15 @@ Result<std::shared_ptr<Store>> Store::open(const std::filesystem::path& director
   }
 
   if (options.mode == OpenMode::ReadWrite) {
+    // A store that predates the identity anchor (or lost it) gets one from the
+    // state that was just loaded and verified.
+    if (!anchor.has_value()) {
+      PLR_CHECK(internal::write_file(directory / std::string(kStoreIdFile),
+                                     format_store_id(store->store_id_),
+                                     options.fsync_state_before_publish));
+      store->recovery_.notes.emplace_back("wrote the store identity anchor from verified state");
+    }
+
     // Advance the durable writer epoch before any mutation is authorized, and
     // heal an unusable head in the same publication.
     PLR_TRY(epoch, store->epoch_.next());
@@ -800,7 +901,7 @@ Result<RecoveryReport> Store::recover_and_republish() {
   }
 
   const std::uint64_t read_bound = static_cast<std::uint64_t>(kHardMaxStateBytes) + 4096ULL;
-  PLR_TRY(loaded, load_published_state(directory_, read_bound));
+  PLR_TRY(loaded, load_published_state(directory_, read_bound, read_store_id_file(directory_).value()));
   if (!loaded.report.recovered_older_publication) {
     RecoveryReport report = loaded.report;
     report.notes.emplace_back("head is usable; nothing to recover");

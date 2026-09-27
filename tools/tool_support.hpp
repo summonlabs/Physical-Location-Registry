@@ -48,6 +48,9 @@ class Arguments {
   std::vector<std::string> unconsumed() const;
   void mark_consumed(std::string_view name);
 
+  /// Every option name that was supplied, deduplicated and sorted.
+  std::vector<std::string> option_names() const;
+
  private:
   std::vector<std::string> raw_;
   std::vector<std::pair<std::string, std::string>> options_;

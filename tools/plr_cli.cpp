@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <filesystem>
 #include <functional>
 #include <iostream>
@@ -802,6 +803,105 @@ int run_init(const Arguments& arguments, const std::string& store_path) {
 
 }  // namespace
 
+/// Options every command accepts.
+const char* const kGlobalOptions[] = {"--store", "--format", "--help"};
+
+/// Options a mutation may carry in addition to its own subject matter.
+const char* const kContextOptions[] = {"--actor",           "--at",
+                                       "--expected-generation", "--expected-revision",
+                                       "--op-id",           "--reason"};
+
+/// One entry per command: the command-specific options it accepts.
+const std::vector<std::pair<std::string_view, std::vector<std::string_view>>>& command_options() {
+  static const std::vector<std::pair<std::string_view, std::vector<std::string_view>>> table = {
+      {"status", {}},
+      {"stats", {}},
+      {"verify", {}},
+      {"roots", {}},
+      {"list", {"--kind", "--lifecycle", "--root", "--max"}},
+      {"show", {"--id"}},
+      {"path", {"--id"}},
+      {"resolve", {"--path", "--include-retired"}},
+      {"children", {"--id", "--depth"}},
+      {"tree", {"--root", "--depth"}},
+      {"aliases", {}},
+      {"diff", {"--from-revision", "--to-revision", "--from-file", "--to-file"}},
+      {"snapshot", {"--out"}},
+      {"explain-resolve", {"--path", "--include-retired"}},
+      {"explain-move", {"--id", "--to-parent", "--actor", "--at"}},
+      {"recover", {}},
+      {"init",
+       {"--max-locations", "--max-depth", "--max-children", "--max-aliases", "--max-moves",
+        "--max-state-bytes", "--max-publications", "--max-retained-revisions"}},
+      {"create",
+       {"--id", "--kind", "--parent", "--component", "--label", "--unit", "--u-height", "--source",
+        "--actor", "--at", "--expected-generation", "--expected-revision", "--op-id", "--reason"}},
+      {"readdress",
+       {"--id", "--component", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"relabel",
+       {"--id", "--label", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"move",
+       {"--id", "--to-parent", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"retire",
+       {"--id", "--subtree", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"reactivate",
+       {"--id", "--subtree", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"replace",
+       {"--id", "--new-id", "--label", "--unit", "--u-height", "--source", "--actor", "--at",
+        "--expected-generation", "--expected-revision", "--op-id", "--reason"}},
+      {"alias-add",
+       {"--id", "--path", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"alias-remove",
+       {"--id", "--path", "--actor", "--at", "--expected-generation", "--expected-revision",
+        "--op-id", "--reason"}},
+      {"set-rack",
+       {"--id", "--unit", "--u-height", "--actor", "--at", "--expected-generation",
+        "--expected-revision", "--op-id", "--reason"}},
+  };
+  return table;
+}
+
+/// Rejects any option the named command does not understand. Silently ignoring a
+/// typo such as "--compnent" would commit a location with the wrong address while
+/// the operator believes otherwise.
+Result<void> check_options(const Arguments& arguments, std::string_view command) {
+  const std::vector<std::string> supplied = arguments.option_names();
+  if (supplied.empty()) {
+    return ok();
+  }
+
+  std::vector<std::string_view> allowed;
+  for (const char* option : kGlobalOptions) {
+    allowed.emplace_back(option);
+  }
+  bool known_command = false;
+  for (const auto& entry : command_options()) {
+    if (entry.first == command) {
+      known_command = true;
+      for (const std::string_view option : entry.second) {
+        allowed.push_back(option);
+      }
+    }
+  }
+  if (!known_command) {
+    return Error(ErrorCode::InvalidArgument, "unknown command").with_subject(std::string(command));
+  }
+
+  for (const std::string& option : supplied) {
+    if (std::find(allowed.begin(), allowed.end(), option) == allowed.end()) {
+      return Error(ErrorCode::InvalidArgument, "unknown option for this command")
+          .with_subject(option);
+    }
+  }
+  return ok();
+}
+
 int main(int argc, char** argv) {
   const Arguments arguments(argc, argv);
   const std::string command = arguments.command();
@@ -816,6 +916,16 @@ int main(int argc, char** argv) {
   }
 
   const std::string store_path = arguments.value_or("--store", "plr-store");
+  const bool json = arguments.value_or("--format", "text") == "json";
+
+  // A typo in an option name is a usage error, not something to ignore: silently
+  // accepting "--compnent" would commit a location with the wrong address while
+  // the operator believes otherwise.
+  const auto options_ok = check_options(arguments, command);
+  if (!options_ok.has_value()) {
+    return static_cast<int>(report(options_ok.error(), json));
+  }
+
   if (command == "init") {
     return run_init(arguments, store_path);
   }
@@ -826,7 +936,7 @@ int main(int argc, char** argv) {
                         command == "alias-remove" || command == "set-rack" || command == "recover";
 
   Session session;
-  session.json = arguments.value_or("--format", "text") == "json";
+  session.json = json;
 
   RegistryOpenOptions options;
   options.mode = mutation ? OpenMode::ReadWrite : OpenMode::ReadOnly;

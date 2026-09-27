@@ -115,6 +115,17 @@ std::vector<std::string> Arguments::unconsumed() const {
 
 void Arguments::mark_consumed(std::string_view name) { consumed_.emplace_back(name); }
 
+std::vector<std::string> Arguments::option_names() const {
+  std::vector<std::string> names;
+  names.reserve(options_.size());
+  for (const auto& option : options_) {
+    names.push_back(option.first);
+  }
+  std::sort(names.begin(), names.end());
+  names.erase(std::unique(names.begin(), names.end()), names.end());
+  return names;
+}
+
 ExitCode exit_code_for(const Error& error) {
   // Specific codes first: an integrity failure is an integrity failure whatever
   // category the untrusted-input decoder that noticed it belongs to.
