@@ -35,8 +35,6 @@ AI or tool attribution of any kind.
   Determinism, generation fencing, alias conflict, move atomicity and
   persistence recovery claims need a test that would fail if the guarantee
   regressed.
-- Do not add timeouts, watchdogs or forced termination to tests. A hanging test
-  is a defect in the code under test, not a scheduling accident.
 - Do not introduce third-party dependencies into the runtime. The library is
   deliberately dependency-free: the C++ standard library plus the operating
   system interfaces needed for durable publication and writer fencing.
