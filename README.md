@@ -1,7 +1,6 @@
 # Physical Location Registry
 
-Physical Location Registry is the Data Center Control Plane (DCCP) Tranche 1
-repository that owns **stable physical addressing**: what places exist in a
+Physical Location Registry is the repository that owns **stable physical addressing**: what places exist in a
 facility, where each one sits in the address hierarchy, which generation of each
 place is current, and how a place moves, is renamed, retires or is replaced.
 
@@ -536,7 +535,7 @@ network or facility hardware, none of which is involved.
   coarse-grained by design: no two writer sessions may own a store at once, in
   one process or across processes.
 * **One store holds its own state.** This repository has no federation, gossip or
-  replication; multi-site composition is a later DCCP concern.
+  replication; multi-site composition is a later multi-site concern.
 * **The revision journal is bounded and in-memory.** `Registry::diff` compares
   revisions retained by a live session. Durable comparison uses published state
   files with `diff_snapshots`, and only generations the store still retains are
